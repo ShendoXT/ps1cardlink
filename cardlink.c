@@ -1,11 +1,12 @@
 /*
  * PS1CardLink PlayStation Memory Card reader (based on MemCARDuino)
- * Shendo 2014/01/14
+ * Shendo 2014-2023
  */
 
 #include <psx.h>
 #include <stdio.h>
 #include <memcard.h>
+#include <string.h>
 
 /*Font related*/
 #include "include/fontspace.h"
@@ -14,14 +15,22 @@
 /*Images*/
 #include "include/bluecard.h"
 
+#include "include/ports.h"
+
+/*Application info*/
+#define SOFTWARE_TITLE		"PS1CardLink 1.1\n2023-01-16"
+
+//#define DEBUG
+
 /*PS1CardLink software version (Major.Minor)*/
-#define VERSION 0x10
+#define VERSION 0x11
 
 /*Commands*/
-#define GETID 0xA0          /*Get identifier*/
-#define GETVER 0xA1         /*Get firmware version*/
-#define MCREAD 0xA2         /*Memory Card Read (frame)*/
-#define MCWRITE 0xA3        /*Memory Card Write (frame)*/
+#define GETID	0xA0		/*Get identifier*/
+#define GETVER	0xA1		/*Get firmware version*/
+#define MCREAD	0xA2		/*Memory Card Read (frame)*/
+#define MCWRITE	0xA3		/*Memory Card Write (frame)*/
+#define MCPORT	0xA4		/*Set Memory Card port*/
 
 /*Responses*/
 #define ERROR 0xE0         /*Invalid command received (error)*/
@@ -168,9 +177,9 @@ void UpdateStatus(char *string)
 	
 	GsSortSimpleSprite(&CardSprite);
 		
-	GsPrintString(16, 16, 128, 128, 128, "PS1CardLink 1.0");
+	GsPrintString(16, 16, 128, 128, 128, SOFTWARE_TITLE);
 	
-	GsPrintString(16, 155, 128, 128, 128, 	"Coded by Shendo, 2014\n"
+	GsPrintString(16, 155, 128, 128, 128, 	"Coded by Shendo\n"
 															"PSXSDK by Tails92\n\n"
 															"Beta testers: Alex.d93,\n"
 															"Carmax91, Danhans42,\n"
@@ -183,8 +192,8 @@ void UpdateStatus(char *string)
 	GsDrawList();									/*Draw primitives from the list*/
 }
 
-/*SIO interrupt function - not really :p*/
-void SIOInterrupt()
+/*All SIO logi*/
+void HandleSIO()
 {
 	/*Check if there is any data waiting in SIO buffer*/
 	if (!SIOCheckInBuffer())
@@ -254,6 +263,12 @@ void SIOInterrupt()
 				SIOSendByte(VERSION);
 					break;
         
+				case MCPORT:
+					while(!SIOCheckInBuffer());
+					ActiveSlot = SIOReadByte();
+					if(ActiveSlot > 1) ActiveSlot == 1;
+					break;
+
 				case MCREAD:
 				
 					RwResult = 0;
@@ -343,6 +358,13 @@ void SIOInterrupt()
 					CounterMode = 1;
 					
 					break;
+
+#ifdef DEBUG
+					/*Return to loader (unirom) if 'x' is sent trough serial port*/
+					case 'x':
+						__asm__("j 0x801B0000");
+					break;
+#endif
 	}
 }
 
@@ -365,8 +387,10 @@ int main()
 	GsUploadImage(&TempImage);
 	InitSelectorSprite();
 	
+	InitPad();
+
 	/*Start SIO communication*/
-	SIOStart(38400);
+	SIOStart(115200);
 
 	GsSetDispEnvSimple(0, 0);
 	GsSetDrawEnvSimple(0, 0, 320, 240);
@@ -378,7 +402,7 @@ int main()
 	
 	while(1)
 	{
-		SIOInterrupt();
+		HandleSIO();
 	}
 	
 	return 0;
